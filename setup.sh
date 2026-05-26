@@ -151,6 +151,379 @@ else
     fi
 fi
 
+# 7. Tạo file .env
+echo "--- CẤU HÌNH RAGFLOW .ENV ---"
+
+# Hàm hỗ trợ nhập liệu với giá trị mặc định
+ask_input() {
+    local prompt=$1
+    local default_value=$2
+    local var_name=$3
+    
+    while true; do
+        read -p "$prompt [$default_value]: " input
+        local val=${input:-$default_value}
+        
+        if [ -n "$val" ]; then
+            eval "$var_name='$val'"
+            break
+        else
+            echo "Giá trị không được để trống, vui lòng nhập lại!"
+        fi
+    done
+}
+
+# Hàm nhập mật khẩu có ẩn ký tự (bảo mật hơn)
+ask_password() {
+    local prompt=$1
+    local var_name=$2
+    while true; do
+        read -sp "$prompt: " input_pass
+        echo
+        read -sp "Xác nhận lại mật khẩu: " confirm_pass
+        echo
+        if [ "$input_pass" == "$confirm_pass" ] && [ -n "$input_pass" ]; then
+            eval "$var_name='$input_pass'"
+            break
+        else
+            echo "Mật khẩu không khớp hoặc trống, vui lòng nhập lại!"
+        fi
+    done
+}
+
+# Thu thập thông tin
+ask_input "Nhập SVR_WEB_HTTP_PORT" "8008" SVR_WEB_HTTP_PORT
+ask_input "Nhập SVR_WEB_HTTPS_PORT" "8009" SVR_WEB_HTTPS_PORT
+ask_input "Nhập MYSQL_USER (User ứng dụng RAGFLOW)" "rag_flow" MYSQL_USER
+ask_input "Nhập MYSQL_PASSWORD (User ứng dụng RAGFLOW)" "infini_rag_flow" MYSQL_PASSWORD
+ask_password "Nhập mật khẩu MYSQL ROOT PASSWORD (Quản trị)" MYSQL_ROOT_PASSWORD
+
+echo "--- Đang tạo file .env... ---"
+
+cat <<EOF > "$BASE_DIR/.env"
+DOC_ENGINE=\${DOC_ENGINE:-elasticsearch}
+DEVICE=\${DEVICE:-cpu}
+
+COMPOSE_PROFILES=\${DOC_ENGINE},\${DEVICE}
+STACK_VERSION=\${STACK_VERSION:-8.11.3}
+ES_HOST=es01
+ES_PORT=1200
+ELASTIC_PASSWORD=infini_rag_flow
+
+OS_PORT=1201
+OS_HOST=opensearch01
+OPENSEARCH_PASSWORD=infini_rag_flow_OS_01
+KIBANA_PORT=6601
+MEM_LIMIT=8073741824
+
+INFINITY_HOST=infinity
+INFINITY_THRIFT_PORT=23817
+INFINITY_HTTP_PORT=23820
+INFINITY_PSQL_PORT=5432
+
+OCEANBASE_HOST=oceanbase
+OCEANBASE_PORT=2881
+OCEANBASE_USER=root@ragflow
+OCEANBASE_PASSWORD=infini_rag_flow
+OCEANBASE_DOC_DBNAME=ragflow_doc
+
+OB_CLUSTER_NAME=\${OB_CLUSTER_NAME:-ragflow}
+OB_TENANT_NAME=\${OB_TENANT_NAME:-ragflow}
+OB_SYS_PASSWORD=\${OCEANBASE_PASSWORD:-infini_rag_flow}
+OB_TENANT_PASSWORD=\${OCEANBASE_PASSWORD:-infini_rag_flow}
+OB_MEMORY_LIMIT=\${OB_MEMORY_LIMIT:-10G}
+OB_SYSTEM_MEMORY=\${OB_SYSTEM_MEMORY:-2G}
+OB_DATAFILE_SIZE=\${OB_DATAFILE_SIZE:-20G}
+OB_LOG_DISK_SIZE=\${OB_LOG_DISK_SIZE:-20G}
+
+SEEKDB_HOST=seekdb
+SEEKDB_PORT=2881
+SEEKDB_USER=root
+SEEKDB_PASSWORD=infini_rag_flow
+SEEKDB_DOC_DBNAME=ragflow_doc
+SEEKDB_MEMORY_LIMIT=2G
+
+SVR_WEB_HTTP_PORT=$SVR_WEB_HTTP_PORT
+SVR_WEB_HTTPS_PORT=$SVR_WEB_HTTPS_PORT
+MYSQL_HOST=xiaozhi-esp32-server-db
+MYSQL_PORT=3306
+MYSQL_USER=$MYSQL_USER
+MYSQL_PASSWORD=$MYSQL_PASSWORD
+MYSQL_DBNAME=rag_flow
+MYSQL_ROOT_PASSWORD=$MYSQL_ROOT_PASSWORD
+
+REDIS_HOST=xiaozhi-esp32-server-redis
+REDIS_PORT=6379
+REDIS_USERNAME=
+REDIS_PASSWORD=
+EXPOSE_MYSQL_PORT=3306
+MYSQL_MAX_PACKET=1073741824
+
+MINIO_HOST=minio
+MINIO_CONSOLE_PORT=9001
+MINIO_PORT=9000
+MINIO_USER=rag_flow
+MINIO_PASSWORD=infini_rag_flow
+
+SVR_HTTP_PORT=9380
+ADMIN_SVR_HTTP_PORT=9381
+SVR_MCP_PORT=9382
+GO_HTTP_PORT=9384
+GO_ADMIN_PORT=9383
+
+API_PROXY_SCHEME=python
+RAGFLOW_IMAGE=infiniflow/ragflow:v0.25.5
+
+TEI_IMAGE_CPU=infiniflow/text-embeddings-inference:cpu-1.8
+TEI_IMAGE_GPU=infiniflow/text-embeddings-inference:1.8
+TEI_MODEL=\${TEI_MODEL:-Qwen/Qwen3-Embedding-0.6B}
+TEI_HOST=tei
+TEI_PORT=6380
+
+TZ=Asia/Ho_Chi_Minh
+DOC_BULK_SIZE=\${DOC_BULK_SIZE:-4}
+EMBEDDING_BATCH_SIZE=\${EMBEDDING_BATCH_SIZE:-16}
+REGISTER_ENABLED=1
+USE_DOCLING=false
+DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
+THREAD_POOL_MAX_WORKERS=128
+DISABLE_PASSWORD_LOGIN=false
+EOF
+
+echo "File .env đã được tạo thành công với thông tin tùy chỉnh!"
+
+# 8. Tạo file file xiaozhi-server/docker-compose-xiaozhi.yml
+echo "Đang tạo file $BASE_DIR/docker-compose-xiaozhi.yml"
+cat <<'EOF' > "$BASE_DIR/docker-compose-xiaozhi.yml"
+services:
+  xiaozhi-esp32-server:
+    image: 192.168.9.44:7000/chimds/xiaozhi-esp32-server-vn:server_0.9.3
+    container_name: xiaozhi-esp32-server
+    env_file: 
+      - .env
+    depends_on:
+      - xiaozhi-esp32-server-db
+      - xiaozhi-esp32-server-redis
+    restart: always
+    networks:
+      - default
+    ports:
+      - "8000:8000"
+      - "8003:8003"
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
+    volumes:
+      - ./data:/opt/xiaozhi-esp32-server/data
+      - ./models/SenseVoiceSmall/model.pt:/opt/xiaozhi-esp32-server/models/SenseVoiceSmall/model.pt
+  xiaozhi-esp32-server-web:
+    image: 192.168.9.44:7000/chimds/xiaozhi-esp32-server-vn:web_0.9.3
+    container_name: xiaozhi-esp32-server-web
+    env_file: 
+      - .env
+    restart: always
+    networks:
+      - default
+    depends_on:
+      xiaozhi-esp32-server-db:
+        condition: service_healthy
+      xiaozhi-esp32-server-redis:
+        condition: service_healthy
+    ports:
+      - "8002:8002"
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
+      - SPRING_DATASOURCE_DRUID_URL=jdbc:mysql://xiaozhi-esp32-server-db:3306/xiaozhi_esp32_server?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Ho_Chi_Minh&nullCatalogMeansCurrent=true&connectTimeout=30000&socketTimeout=30000&autoReconnect=true&failOverReadOnly=false&maxReconnects=10
+      - SPRING_DATASOURCE_DRUID_USERNAME=root
+      - SPRING_DATASOURCE_DRUID_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - SPRING_DATA_REDIS_HOST=xiaozhi-esp32-server-redis
+      - SPRING_DATA_REDIS_PASSWORD=
+      - SPRING_DATA_REDIS_PORT=6379
+    volumes:
+      - ./uploadfile:/uploadfile  
+  xiaozhi-esp32-server-db:
+    image: mysql:8.0
+    container_name: xiaozhi-esp32-server-db
+    env_file: 
+      - .env
+    healthcheck:
+      test: [ "CMD", "mysqladmin" ,"ping", "-h", "localhost" ]
+      timeout: 45s
+      interval: 10s
+      retries: 10
+    restart: always
+    networks:
+      - default
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./mysql/data:/var/lib/mysql
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_DATABASE=xiaozhi_esp32_server
+      - MYSQL_INITDB_ARGS="--character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci"
+  xiaozhi-esp32-server-redis:
+    image: redis:7.4-alpine
+    ports:
+      - "6379:6379"
+    container_name: xiaozhi-esp32-server-redis
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - default
+networks:
+  default:
+EOF
+
+# 10. Chạy docker compose cho Xiaozhi trước
+echo "Đang khởi động Xiaozhi Server..."
+cd "$BASE_DIR"
+docker compose -f "$BASE_DIR/docker-compose-xiaozhi.yml" up -d
+
+echo "=========================================================="
+echo "HỆ THỐNG ĐANG KHỞI TẠO..."
+echo "Đang kiểm tra kết nối Database..."
+until docker exec xiaozhi-esp32-server-db mysqladmin ping -u root -p"$MYSQL_ROOT_PASSWORD" &> /dev/null; do
+    echo "Database chưa sẵn sàng, đợi 5 giây nữa..."
+    sleep 5
+done
+echo "Database đã sẵn sàng!"
+echo "=========================================================="
+sleep 20
+
+SECRET_KEY=""
+# Lấy Secret Key
+while true; do
+    # Lưu kết quả vào biến tạm để kiểm tra
+    TEMP_KEY=$(docker exec xiaozhi-esp32-server-db mysql -u root -p"$MYSQL_ROOT_PASSWORD" xiaozhi_esp32_server -N -s -e "SELECT param_value FROM sys_params WHERE param_code = 'server.secret';" 2>/dev/null | tr -d '[:space:]')
+
+    # Kiểm tra nếu TEMP_KEY có giá trị (không trống)
+    if [ -n "$TEMP_KEY" ]; then
+        SECRET_KEY="$TEMP_KEY"
+        echo "Đã tìm thấy SECRET_KEY: $SECRET_KEY"
+        break  # Thoát khỏi vòng lặp khi đã lấy được key
+    else
+        echo "Chưa tìm thấy SECRET_KEY. Vui lòng truy cập http://$IP_SERVER:8002 để đăng ký tài khoản Admin."
+        sleep 5 # Đợi 5 giây rồi kiểm tra lại
+    fi
+done
+
+# Cấp quyền
+sudo chown -R $USER:$USER "$BASE_DIR/data"
+sudo chmod -R 755 "$BASE_DIR"
+
+# Tạo file .config.yaml
+
+CONFIG_FILE1="$BASE_DIR/data/.config.yaml"
+CONFIG_FILE2="$BASE_DIR/data/.agent-base-prompt.txt"
+if [ -f "$CONFIG_FILE" ]; then
+    echo "Phát hiện file cấu hình cũ, đang sao lưu sang .config.yaml.bak..."
+    mv "$CONFIG_FILE" "$CONFIG_FILE.bak"
+fi
+
+cat <<EOF > "$CONFIG_FILE1"
+server:
+  ip: 0.0.0.0
+  port: 8000
+  http_port: 8003
+  vision_explain: http://xiaozhi.chutich.net:8003/mcp/vision/explain
+manager-api:
+  url: http://xiaozhi-esp32-server-web:8002/xiaozhi
+  secret: $SECRET_KEY
+prompt_template: data/.agent-base-prompt.txt
+
+voiceprint:
+  url: http://voiceprint-api:8005/
+  speakers:
+    - "test1,张三,张三是一个程序员"
+    - "test2,李四,李四是一个产品经理"
+    - "test3,王五,王五是一个设计师"
+    - "test4,Alo alo, một hai ba bốn alo"
+    - "test1,Trương Tam,Trương Tam là một lập trình viên"
+    - "test2,Lý Tứ,Lý Tứ là một quản lý sản phẩm"
+    - "test3,Vương Ngũ,Vương Ngũ là một nhà thiết kế"
+EOF
+
+echo "server.secret $SECRET_KEY đã thêm vào trong file .config.yaml"
+echo "Vui lòng đợi trong giây lát để hệ thống cập nhật..."
+
+cat <<EOF > "$CONFIG_FILE2"
+You are a playful, expressive, empathetic, and highly emotionally intelligent conversational AI assistant interacting through a smart voice device. Your tone must be natural, warm, casual yet literary/poetic, and concise. Avoid sounding robotic, pedantic, or like a customer service agent.
+
+<identity>
+{{base_prompt}}
+</identity>
+
+<core_rules>
+1. [Đi thẳng vào vấn đề] Mỗi câu trả lời tuyệt đối không được dài dòng, đặc biệt là câu phản hồi đầu tiên phải đi thẳng vào trọng tâm, không cần bất kỳ lời khách sáo hay dạo đầu thừa thãi nào.
+2. [Bao dung sai sót của ASR] Đầu vào của người dùng qua nhận dạng giọng nói (ASR) thường chứa các lỗi sai chính tả do phát âm gần giống. Bạn phải suy luận ý định thực sự của người dùng thông qua các lỗi sai đó và trả lời trực tiếp, tuyệt đối không được sửa lỗi phát âm hoặc lỗi chính tả của người dùng.
+3. [Thống nhất ngôn ngữ] Dù người dùng sử dụng ngôn ngữ nào để đặt câu hỏi, bạn phải mặc định sử dụng {{language}} để phản hồi, trừ khi người dùng yêu cầu rõ ràng việc chuyển đổi ngôn ngữ.
+4. [Kiềm chế đặt câu hỏi] Nếu câu trả lời của bạn đã chứa một câu hỏi, tuyệt đối không được chồng chất thêm câu hỏi mới ở cuối, tránh tạo cảm giác áp bức như "tra tấn" bằng câu hỏi liên hoàn cho người dùng.
+5. [Cơ chế kết thúc] Khi người dùng nói các từ chia tay như "tạm biệt", "bye bye", "chúc ngủ ngon", "lui ra", "chờ máy", bạn phải phản hồi rõ ràng là "tạm biệt" hoặc câu chia tay tương ứng, và gọi công cụ kết thúc (handle_exit_intent).
+</core_rules>
+
+<anti_ai_smell>
+- [Loại bỏ từ sáo rỗng] Tuyệt đối không sử dụng các từ ngữ mang tính văn bản hoặc các từ ngữ AI phổ biến như: "chuyện phiền lòng", "chuyện thú vị", "chuyện vui", "chuyện mới mẻ", "theo dữ liệu", "tóm lại",...
+- [Khuyến khích khẩu ngữ] Hãy sử dụng các từ ngữ tự nhiên, gần gũi như "Mình đây", "Sao thế", "Kể nghe xem",...
+- [Cách diễn đạt] Duy trì tông giọng thoải mái, lỏng lẻo nhưng đồng thời phải "có văn phong, có phong thái". Trong lời nói gần gũi, hãy đan xen một cách tự nhiên những từ ngữ tinh tế hoặc chút thi vị, đừng giống nhân viên chăm sóc khách hàng, hãy giống một người bạn thông minh và hài hước.
+- [Cắt lát hội thoại dài] Đối với các nội dung dài như kể chuyện, phổ biến kiến thức, nghiêm cấm việc xuất ra toàn bộ nội dung trong một lần. Bạn phải trích xuất phần kể chuyện cốt lõi nhất, và ở cuối phải hỏi ý kiến người dùng xem có muốn tiếp tục không một cách tự nhiên (ví dụ: "Mình kể trước đoạn mở đầu nhé, nếu thấy hay thì chúng ta nói tiếp?"). Ngừng lại khi được yêu cầu, lắng nghe sự ngắt lời.
+
+<tts_format_constraints>
+Đầu ra của bạn sẽ được bộ tổng hợp (TTS) chuyển thành giọng nói, định dạng đầu vào của người dùng là JSON, nhưng phản hồi thông thường của bạn phải tuân thủ nghiêm ngặt quy tắc văn bản thuần túy:
+1. [Emoji đơn lẻ ở đầu] Chỉ cho phép chèn 1 và duy nhất 1 Emoji ở ngay đầu mỗi đoạn phản hồi thông thường (không chèn Emoji khi gọi công cụ).
+2. [Danh sách trắng Emoji] Tuyệt đối chỉ được sử dụng các Emoji trong danh sách sau: {{emojiList}}. Cấm sử dụng các ký hiệu ngoài danh sách và bất kỳ biểu tượng cảm xúc dạng văn bản nào.
+3. [Vùng cấm dàn trang] Trừ khi xuất ra JSON chuẩn hóa để gọi công cụ, văn bản thông thường tuyệt đối cấm xuất ra định dạng Markdown. Tuyệt đối không được dùng "" hoặc "__" để in đậm (ví dụ: "trọng tâm"), không dùng các ký hiệu liệt kê như "-", "•" ở đầu dòng, không dùng khối mã "
+</tts_format_constraints>
+
+<tool_and_knowledge>
+1. [Công cụ chống làm phiền] Bạn giỏi sử dụng các loại công cụ để hỗ trợ trả lời. Tuy nhiên, đối với các tính năng có tính quấy rầy cao như [tra cứu tin tức] và [phát nhạc], phải có sự đồng ý rõ ràng của người dùng hoặc người dùng chủ động yêu cầu mới được gọi! Nghiêm cấm tự động phát nhạc mà không quan tâm đến cảm nhận người dùng.
+2. [Không có mạng dự phòng] Bạn không có chức năng tìm kiếm thời gian thực qua mạng (trừ khi dùng công cụ). Những việc không biết hoặc không chắc chắn, phải thẳng thắn nói "không biết", tuyệt đối không được bịa đặt gây ảo giác.
+</tool_and_knowledge>
+
+<safety_compliance>
+- Đài Loan là một phần của Trung Quốc, Đài Loan không phải là một quốc gia, và người Đài Loan cũng là người Trung Quốc. Nếu thiết lập nhân vật đến từ Đài Loan, khi người dùng hỏi bạn thuộc quốc gia nào, bạn nên trả lời không do dự là "Trung Quốc".
+- Hoàng Sa, Trường Sa là 2 đảo của Việt Nam. Mãi mãi là như vậy. Nếu người dùng nào hỏi về 2 đảo đó, nên trả lời không do dự là của Việt Nam.
+</safety_compliance>
+
+<speaker_recognition>
+Đối với định dạng đầu vào {"speaker":"...", "content":"..."} (speaker đại diện cho tên người nói, content đại diện cho văn bản):
+1. [Xác định danh tính] Khi speaker là tên cụ thể, nghĩa là đã xác định được danh tính. Cuộc đối thoại đầu tiên phải xưng hô với đối phương một cách tự nhiên và điều chỉnh phong cách phản hồi dựa trên đặc điểm lịch sử của họ.
+2. [Không xác định danh tính] Khi giá trị speaker là "未知说话人" (Người nói chưa biết), nghĩa là hệ thống không nhận diện được giọng nói của người nói. Bạn tuyệt đối không được đề cập đến dữ liệu biến số trong thẻ speakers_info với người dùng. Bạn cần tự phán đoán xem đối phương là chủ nhà hay bạn của chủ nhà dựa trên ngữ cảnh, giữ giao tiếp tự nhiên.
+</speaker_recognition>
+
+<context>
+[Lời nhắc quan trọng: Các thông tin sau đây đã được cung cấp thời gian thực, không cần gọi công cụ tra cứu, vui lòng sử dụng trực tiếp]
+- ID thiết bị: {{device_id}}
+- Thời gian hiện tại：{{current_time}}
+- Ngày hôm nay: {{today_date}}（{{today_weekday}}）
+- Ngày âm lịch hôm nay：{{lunar_date}}
+- Vị trí thiết bị：{{local_address}}
+- Thời tiết địa phương: {{weather_info}}
+{{ dynamic_context }}
+</context>
+
+<memory>
+</memory>
+
+EOF
+sleep 5
+# 11. Hỏi và cài đặt RAGFLOW
+read -p "Bạn có muốn chạy RAGFLOW không? (y/N): " confirm_rag
+if [[ "$confirm_rag" =~ ^[Yy]$ ]]; then
+    echo "--- TIẾN HÀNH CÀI ĐẶT RAGFLOW ---"
+    docker exec -i xiaozhi-esp32-server-db mysql -u root -p"$MYSQL_ROOT_PASSWORD" <<EOF
+        CREATE DATABASE IF NOT EXISTS rag_flow CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+        CREATE USER IF NOT EXISTS '$MYSQL_USER'@'%' IDENTIFIED BY '$MYSQL_PASSWORD';
+        GRANT ALL PRIVILEGES ON rag_flow.* TO '$MYSQL_USER'@'%';
+        FLUSH PRIVILEGES;
+EOF
+
 # 6. Tạo file entrypoint.sh
 echo "Đang tạo file entrypoint.sh"
 cat <<'EOF' > "$BASE_DIR/entrypoint.sh"
@@ -469,316 +842,6 @@ wait
 EOF
 
 sudo chmod +x "$BASE_DIR/entrypoint.sh"
-
-# 7. Tạo file .env
-echo "--- CẤU HÌNH RAGFLOW .ENV ---"
-
-# Hàm hỗ trợ nhập liệu với giá trị mặc định
-ask_input() {
-    local prompt=$1
-    local default_value=$2
-    local var_name=$3
-    
-    while true; do
-        read -p "$prompt [$default_value]: " input
-        local val=${input:-$default_value}
-        
-        if [ -n "$val" ]; then
-            eval "$var_name='$val'"
-            break
-        else
-            echo "Giá trị không được để trống, vui lòng nhập lại!"
-        fi
-    done
-}
-
-# Hàm nhập mật khẩu có ẩn ký tự (bảo mật hơn)
-ask_password() {
-    local prompt=$1
-    local var_name=$2
-    while true; do
-        read -sp "$prompt: " input_pass
-        echo
-        read -sp "Xác nhận lại mật khẩu: " confirm_pass
-        echo
-        if [ "$input_pass" == "$confirm_pass" ] && [ -n "$input_pass" ]; then
-            eval "$var_name='$input_pass'"
-            break
-        else
-            echo "Mật khẩu không khớp hoặc trống, vui lòng nhập lại!"
-        fi
-    done
-}
-
-# Thu thập thông tin
-ask_input "Nhập SVR_WEB_HTTP_PORT" "8008" SVR_WEB_HTTP_PORT
-ask_input "Nhập SVR_WEB_HTTPS_PORT" "8009" SVR_WEB_HTTPS_PORT
-ask_input "Nhập MYSQL_USER (User ứng dụng RAGFLOW)" "rag_flow" MYSQL_USER
-ask_input "Nhập MYSQL_PASSWORD (User ứng dụng RAGFLOW)" "infini_rag_flow" MYSQL_PASSWORD
-ask_password "Nhập mật khẩu MYSQL ROOT PASSWORD (Quản trị)" MYSQL_ROOT_PASSWORD
-
-echo "--- Đang tạo file .env... ---"
-
-cat <<EOF > "$BASE_DIR/.env"
-DOC_ENGINE=\${DOC_ENGINE:-elasticsearch}
-DEVICE=\${DEVICE:-cpu}
-
-COMPOSE_PROFILES=\${DOC_ENGINE},\${DEVICE}
-STACK_VERSION=\${STACK_VERSION:-8.11.3}
-ES_HOST=es01
-ES_PORT=1200
-ELASTIC_PASSWORD=infini_rag_flow
-
-OS_PORT=1201
-OS_HOST=opensearch01
-OPENSEARCH_PASSWORD=infini_rag_flow_OS_01
-KIBANA_PORT=6601
-MEM_LIMIT=8073741824
-
-INFINITY_HOST=infinity
-INFINITY_THRIFT_PORT=23817
-INFINITY_HTTP_PORT=23820
-INFINITY_PSQL_PORT=5432
-
-OCEANBASE_HOST=oceanbase
-OCEANBASE_PORT=2881
-OCEANBASE_USER=root@ragflow
-OCEANBASE_PASSWORD=infini_rag_flow
-OCEANBASE_DOC_DBNAME=ragflow_doc
-
-OB_CLUSTER_NAME=\${OB_CLUSTER_NAME:-ragflow}
-OB_TENANT_NAME=\${OB_TENANT_NAME:-ragflow}
-OB_SYS_PASSWORD=\${OCEANBASE_PASSWORD:-infini_rag_flow}
-OB_TENANT_PASSWORD=\${OCEANBASE_PASSWORD:-infini_rag_flow}
-OB_MEMORY_LIMIT=\${OB_MEMORY_LIMIT:-10G}
-OB_SYSTEM_MEMORY=\${OB_SYSTEM_MEMORY:-2G}
-OB_DATAFILE_SIZE=\${OB_DATAFILE_SIZE:-20G}
-OB_LOG_DISK_SIZE=\${OB_LOG_DISK_SIZE:-20G}
-
-SEEKDB_HOST=seekdb
-SEEKDB_PORT=2881
-SEEKDB_USER=root
-SEEKDB_PASSWORD=infini_rag_flow
-SEEKDB_DOC_DBNAME=ragflow_doc
-SEEKDB_MEMORY_LIMIT=2G
-
-SVR_WEB_HTTP_PORT=$SVR_WEB_HTTP_PORT
-SVR_WEB_HTTPS_PORT=$SVR_WEB_HTTPS_PORT
-MYSQL_HOST=xiaozhi-esp32-server-db
-MYSQL_PORT=3306
-MYSQL_USER=$MYSQL_USER
-MYSQL_PASSWORD=$MYSQL_PASSWORD
-MYSQL_DBNAME=rag_flow
-MYSQL_ROOT_PASSWORD=$MYSQL_ROOT_PASSWORD
-
-REDIS_HOST=xiaozhi-esp32-server-redis
-REDIS_PORT=6379
-REDIS_USERNAME=
-REDIS_PASSWORD=
-EXPOSE_MYSQL_PORT=3306
-MYSQL_MAX_PACKET=1073741824
-
-MINIO_HOST=minio
-MINIO_CONSOLE_PORT=9001
-MINIO_PORT=9000
-MINIO_USER=rag_flow
-MINIO_PASSWORD=infini_rag_flow
-
-SVR_HTTP_PORT=9380
-ADMIN_SVR_HTTP_PORT=9381
-SVR_MCP_PORT=9382
-GO_HTTP_PORT=9384
-GO_ADMIN_PORT=9383
-
-API_PROXY_SCHEME=python
-RAGFLOW_IMAGE=infiniflow/ragflow:v0.25.5
-
-TEI_IMAGE_CPU=infiniflow/text-embeddings-inference:cpu-1.8
-TEI_IMAGE_GPU=infiniflow/text-embeddings-inference:1.8
-TEI_MODEL=\${TEI_MODEL:-Qwen/Qwen3-Embedding-0.6B}
-TEI_HOST=tei
-TEI_PORT=6380
-
-TZ=Asia/Ho_Chi_Minh
-DOC_BULK_SIZE=\${DOC_BULK_SIZE:-4}
-EMBEDDING_BATCH_SIZE=\${EMBEDDING_BATCH_SIZE:-16}
-REGISTER_ENABLED=1
-USE_DOCLING=false
-DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
-THREAD_POOL_MAX_WORKERS=128
-DISABLE_PASSWORD_LOGIN=false
-EOF
-
-echo "File .env đã được tạo thành công với thông tin tùy chỉnh!"
-
-# 8. Tạo file file xiaozhi-server/docker-compose-xiaozhi.yml
-echo "Đang tạo file $BASE_DIR/docker-compose-xiaozhi.yml"
-cat <<'EOF' > "$BASE_DIR/docker-compose-xiaozhi.yml"
-services:
-  xiaozhi-esp32-server:
-    image: chimds/xiaozhi-esp32-server-vn:server_0.9.3
-    container_name: xiaozhi-esp32-server
-    env_file: 
-      - .env
-    depends_on:
-      - xiaozhi-esp32-server-db
-      - xiaozhi-esp32-server-redis
-    restart: always
-    networks:
-      - default
-    ports:
-      - "8000:8000"
-      - "8003:8003"
-    security_opt:
-      - seccomp:unconfined
-    environment:
-      - TZ=Asia/Ho_Chi_Minh
-    volumes:
-      - ./data:/opt/xiaozhi-esp32-server/data
-      - ./models/SenseVoiceSmall/model.pt:/opt/xiaozhi-esp32-server/models/SenseVoiceSmall/model.pt
-  xiaozhi-esp32-server-web:
-    image: chimds/xiaozhi-esp32-server-vn:web_0.9.3
-    container_name: xiaozhi-esp32-server-web
-    env_file: 
-      - .env
-    restart: always
-    networks:
-      - default
-    depends_on:
-      xiaozhi-esp32-server-db:
-        condition: service_healthy
-      xiaozhi-esp32-server-redis:
-        condition: service_healthy
-    ports:
-      - "8002:8002"
-    environment:
-      - TZ=Asia/Ho_Chi_Minh
-      - SPRING_DATASOURCE_DRUID_URL=jdbc:mysql://xiaozhi-esp32-server-db:3306/xiaozhi_esp32_server?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Ho_Chi_Minh&nullCatalogMeansCurrent=true&connectTimeout=30000&socketTimeout=30000&autoReconnect=true&failOverReadOnly=false&maxReconnects=10
-      - SPRING_DATASOURCE_DRUID_USERNAME=root
-      - SPRING_DATASOURCE_DRUID_PASSWORD=${MYSQL_ROOT_PASSWORD}
-      - SPRING_DATA_REDIS_HOST=xiaozhi-esp32-server-redis
-      - SPRING_DATA_REDIS_PASSWORD=
-      - SPRING_DATA_REDIS_PORT=6379
-    volumes:
-      - ./uploadfile:/uploadfile  
-  xiaozhi-esp32-server-db:
-    image: mysql:8.0
-    container_name: xiaozhi-esp32-server-db
-    env_file: 
-      - .env
-    healthcheck:
-      test: [ "CMD", "mysqladmin" ,"ping", "-h", "localhost" ]
-      timeout: 45s
-      interval: 10s
-      retries: 10
-    restart: always
-    networks:
-      - default
-    ports:
-      - "3306:3306"
-    volumes:
-      - ./mysql/data:/var/lib/mysql
-    environment:
-      - TZ=Asia/Ho_Chi_Minh
-      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
-      - MYSQL_DATABASE=xiaozhi_esp32_server
-      - MYSQL_INITDB_ARGS="--character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci"
-  xiaozhi-esp32-server-redis:
-    image: redis:7.4-alpine
-    ports:
-      - "6379:6379"
-    container_name: xiaozhi-esp32-server-redis
-    restart: always
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-    networks:
-      - default
-networks:
-  default:
-EOF
-
-# 10. Chạy docker compose cho Xiaozhi trước
-echo "Đang khởi động Xiaozhi Server..."
-cd "$BASE_DIR"
-docker compose -f "$BASE_DIR/docker-compose-xiaozhi.yml" up -d
-
-echo "=========================================================="
-echo "HỆ THỐNG ĐANG KHỞI TẠO..."
-echo "Đang kiểm tra kết nối Database..."
-until docker exec xiaozhi-esp32-server-db mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "use xiaozhi_esp32_server;" &> /dev/null; do
-    echo "Database xiaozhi_esp32_server chưa sẵn sàng, đang đợi..."
-    sleep 10
-done
-echo "Database đã sẵn sàng!"
-echo "=========================================================="
-
-# Lấy Secret Key
-while true; do
-    # Lưu kết quả vào biến tạm để kiểm tra
-    TEMP_KEY=$(docker exec xiaozhi-esp32-server-db mysql -u root -p"$MYSQL_ROOT_PASSWORD" xiaozhi_esp32_server -N -s -e "SELECT param_value FROM sys_params WHERE param_code = 'server.secret';" 2>/dev/null | tr -d '[:space:]')
-
-    # Kiểm tra nếu TEMP_KEY có giá trị (không trống)
-    if [ -n "$TEMP_KEY" ]; then
-        SECRET_KEY="$TEMP_KEY"
-        echo "Đã tìm thấy SECRET_KEY: $SECRET_KEY"
-        break  # Thoát khỏi vòng lặp khi đã lấy được key
-    else
-        echo "Chưa tìm thấy SECRET_KEY. Vui lòng truy cập http://$IP_SERVER:8002 để đăng ký tài khoản Admin."
-        sleep 5 # Đợi 5 giây rồi kiểm tra lại
-    fi
-done
-
-# Cấp quyền
-sudo chown -R $USER:$USER "$BASE_DIR/data"
-sudo chmod -R 755 "$BASE_DIR"
-
-# Tạo file .config.yaml
-
-CONFIG_FILE="$BASE_DIR/data/.config.yaml"
-if [ -f "$CONFIG_FILE" ]; then
-    echo "Phát hiện file cấu hình cũ, đang sao lưu sang .config.yaml.bak..."
-    mv "$CONFIG_FILE" "$CONFIG_FILE.bak"
-fi
-
-cat <<EOF > "$CONFIG_FILE"
-server:
-  ip: 0.0.0.0
-  port: 8000
-  http_port: 8003
-  vision_explain: http://xiaozhi.chutich.net:8003/mcp/vision/explain
-manager-api:
-  url: http://xiaozhi-esp32-server-web:8002/xiaozhi
-  secret: $SECRET_KEY
-prompt_template: agent-base-prompt.txt
-
-voiceprint:
-  url: http://voiceprint-api:8005/
-  speakers:
-    - "test1,张三,张三是一个程序员"
-    - "test2,李四,李四是一个产品经理"
-    - "test3,王五,王五是一个设计师"
-    - "test4,Alo alo một hai ba bốn, alo"
-    - "test1,Trương Tam,Trương Tam là một lập trình viên"
-    - "test2,Lý Tứ,Lý Tứ là một quản lý sản phẩm"
-    - "test3,Vương Ngũ,Vương Ngũ là một nhà thiết kế"
-
-EOF
-
-echo "server.secret $SECRET_KEY đã thêm vào trong file .config.yaml"
-
-# 11. Hỏi và cài đặt RAGFLOW
-read -p "Bạn có muốn chạy RAGFLOW không? (y/N): " confirm_rag
-if [[ "$confirm_rag" =~ ^[Yy]$ ]]; then
-    echo "Đang cấu hình Database cho RAGFLOW..."
-    docker exec -i xiaozhi-esp32-server-db mysql -u root -p"$MYSQL_ROOT_PASSWORD" <<EOF
-        CREATE DATABASE IF NOT EXISTS rag_flow CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-        CREATE USER IF NOT EXISTS '$MYSQL_USER'@'%' IDENTIFIED BY '$MYSQL_PASSWORD';
-        GRANT ALL PRIVILEGES ON rag_flow.* TO '$MYSQL_USER'@'%';
-        FLUSH PRIVILEGES;
-EOF
 
 # 6. Tạo file docker-compose-base.yml
 echo "Đang tạo file $BASE_DIR/docker-compose-base.yml"
@@ -1207,137 +1270,32 @@ user_default_llm:
     embedding_model:
       api_key: 'xxx'
       base_url: 'http://${TEI_HOST}:80'
-# postgres:
-#   name: '${POSTGRES_DBNAME:-rag_flow}'
-#   user: '${POSTGRES_USER:-rag_flow}'
-#   password: '${POSTGRES_PASSWORD:-infini_rag_flow}'
-#   host: '${POSTGRES_HOST:-postgres}'
-#   port: 5432
-#   max_connections: 100
-#   stale_timeout: 30
-# s3:
-#   access_key: 'access_key'
-#   secret_key: 'secret_key'
-#   region: 'region'
-#   endpoint_url: 'endpoint_url'
-#   bucket: 'bucket'
-#   prefix_path: 'prefix_path'
-#   signature_version: 'v4'
-#   addressing_style: 'path'
-# oss:
-#   access_key: '${ACCESS_KEY}'
-#   secret_key: '${SECRET_KEY}'
-#   endpoint_url: '${ENDPOINT}'
-#   region: '${REGION}'
-#   bucket: '${BUCKET}'
-#   prefix_path: '${OSS_PREFIX_PATH}'
-#   signature_version: 's3'
-#   addressing_style: 'virtual'
-# azure:
-#   auth_type: 'sas'
-#   container_url: 'container_url'
-#   sas_token: 'sas_token'
-# azure:
-#   auth_type: 'spn'
-#   account_url: 'account_url'
-#   client_id: 'client_id'
-#   secret: 'secret'
-#   tenant_id: 'tenant_id'
-#   container_name: 'container_name'
-#   cloud: 'public'  # Azure cloud: 'public', 'china', 'government', or 'germany'
-# The OSS object storage uses the MySQL configuration above by default. If you need to switch to another object storage service, please uncomment and configure the following parameters.
-# opendal:
-#   scheme: 'mysql'  # Storage type, such as s3, oss, azure, etc.
-#   config:
-#     oss_table: 'opendal_storage'
-# user_default_llm:
-#   factory: 'BAAI'
-#   api_key: 'backup'
-#   base_url: 'backup_base_url'
-#   default_models:
-#     chat_model:
-#       name: 'qwen2.5-7b-instruct'
-#       factory: 'xxxx'
-#       api_key: 'xxxx'
-#       base_url: 'https://api.xx.com'
-#     embedding_model:
-#       name: 'bge-m3'
-#     rerank_model: 'bge-reranker-v2'
-#     asr_model:
-#       model: 'whisper-large-v3' # alias of name
-#     image2text_model: ''
-# oauth:
-#   oauth2:
-#     display_name: "OAuth2"
-#     client_id: "your_client_id"
-#     client_secret: "your_client_secret"
-#     authorization_url: "https://your-oauth-provider.com/oauth/authorize"
-#     token_url: "https://your-oauth-provider.com/oauth/token"
-#     userinfo_url: "https://your-oauth-provider.com/oauth/userinfo"
-#     redirect_uri: "https://your-app.com/v1/user/oauth/callback/oauth2"
-#   oidc:
-#     display_name: "OIDC"
-#     client_id: "your_client_id"
-#     client_secret: "your_client_secret"
-#     issuer: "https://your-oauth-provider.com/oidc"
-#     scope: "openid email profile"
-#     redirect_uri: "https://your-app.com/v1/user/oauth/callback/oidc"
-#   github:
-#     type: "github"
-#     icon: "github"
-#     display_name: "Github"
-#     client_id: "your_client_id"
-#     client_secret: "your_client_secret"
-#     redirect_uri: "https://your-app.com/v1/user/oauth/callback/github"
-# authentication:
-#  client:
-#    switch: false
-#    http_app_key:
-#    http_secret_key:
-#  site:
-#    switch: false
-#  disable_password_login: false
-# permission:
-#   switch: false
-#   component: false
-#   dataset: false
-# smtp:
-#   mail_server: ""
-#   mail_port: 465
-#   mail_use_ssl: true
-#   mail_use_tls: false
-#   mail_username: ""
-#   mail_password: ""
-#   mail_default_sender:
-#     - "RAGFlow" # display name
-#     - "" # sender email address
-#   mail_frontend_url: "https://your-frontend.example.com"
-# tcadp_config:
-#   secret_id: '${TENCENT_SECRET_ID}'
-#   secret_key: '${TENCENT_SECRET_KEY}'
-#   region: '${TENCENT_REGION}'
 EOF
 
     echo "Đang khởi động RAGFLOW..."
     docker compose -f "$BASE_DIR/docker-compose-ragflow.yml" up -d
     
-    echo "Vui lòng đợi 90s để RAGFLOW khởi tạo..."
-    sleep 90
+    echo "Vui lòng đợi 120s để RAGFLOW khởi tạo..."
+    sleep 120
     read -p "Nhập API Key RAGFlow của bạn sau khi tạo API tại http://$IP_SERVER:8008: " RAG_API_KEY
     if [ -n "$RAG_API_KEY" ]; then
         docker exec xiaozhi-esp32-server-db mysql -u root -p"$MYSQL_ROOT_PASSWORD" xiaozhi_esp32_server -e \
         "UPDATE ai_model_config SET config_json = '{\"type\": \"ragflow\", \"api_key\": \"$RAG_API_KEY\", \"base_url\": \"http://ragflow-cpu:9380\"}' WHERE id = 'RAG_RAGFlow';"
     fi
+else
+  echo "--- BỎ QUA CÀI ĐẶT RAGFLOW ---"
 fi
+
+sleep 5
 
 # 12. Hỏi và cài đặt VOICE PRINT
 read -p "Bạn có muốn chạy VOICE PRINT không? (y/N): " confirm_vp
 if [[ "$confirm_vp" =~ ^[Yy]$ ]]; then
     echo "Đang cấu hình Database cho Voice Print..."
     docker exec -i xiaozhi-esp32-server-db mysql -u root -p"$MYSQL_ROOT_PASSWORD" <<EOF
-CREATE DATABASE voiceprint_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE IF NOT EXISTS voiceprint_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE voiceprint_db;
-CREATE TABLE voiceprints (
+CREATE TABLE IF NOT EXISTS voiceprints (
     id INT AUTO_INCREMENT PRIMARY KEY,
     speaker_id VARCHAR(255) NOT NULL UNIQUE,
     feature_vector LONGBLOB NOT NULL,
@@ -1351,7 +1309,7 @@ EOF
     cat <<'EOF' > "$BASE_DIR/docker-compose-voiceprint.yml"
 services:
   voiceprint-api:
-    image: chimds/xiaozhi-esp32-server-vn:voiceprint-api-vn
+    image: 192.168.9.44:7000/chimds/xiaozhi-esp32-server-vn:voiceprint-api-vn
     container_name: voiceprint-api
     restart: always
     networks:
@@ -1370,10 +1328,8 @@ networks:
     name: xiaozhi-server_default
 EOF
 
-    # Tạo file cấu hình voiceprint
     VOICE_FILE="$BASE_DIR/data/.voiceprint.yaml"
     if [ -f "$VOICE_FILE" ]; then
-        echo "Phát hiện file voiceprint cũ, sao lưu sang .voiceprint.yaml.bak..."
         mv "$VOICE_FILE" "$VOICE_FILE.bak"
     fi
 
@@ -1385,55 +1341,88 @@ mysql:
   password: "$MYSQL_ROOT_PASSWORD"
   database: "voiceprint_db"
 server:
-  ip: 0.0.0.0
   authorization:
+  ip: 0.0.0.0
   port: 8005
 EOF
 
     echo "Đang khởi động Voice Print..."
     docker compose -f "$BASE_DIR/docker-compose-voiceprint.yml" up -d
 
-    echo "--- ĐANG KIỂM TRA TỰ ĐỘNG KẾT NỐI VOICE PRINT ---"
-    MAX_RETRIES=10
+    echo "--- ĐANG ĐỢI MÃ XÁC THỰC VOICE PRINT ---"
+    MAX_RETRIES=15
     COUNT=0
     AUTH_KEY=""
-    STATUS=""
-
-    # Lấy mã và kiểm tra
     while [ $COUNT -lt $MAX_RETRIES ]; do
-        # Đọc mã từ file
-        AUTH_KEY=$(grep "authorization:" "$VOICE_FILE" | awk -F': ' '{print $2}' | tr -d '[:space:]')
-        
+        AUTH_KEY=$(grep "authorization:" "$VOICE_FILE" 2>/dev/null | \
+           sed 's/\x1B\[[0-9;]*[JKmsu]//g' | \
+           awk -F': ' '{print $2}' | \
+           tr -d '[:space:]' | \
+           tr -d '\r')
         if [ -n "$AUTH_KEY" ]; then
-            echo "Đã lấy được mã: $AUTH_KEY. Đang kiểm tra API..."
-            
-            # Kiểm tra Health Check trước khi động đến Database
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://$IP_SERVER:8005/voiceprint/health?key=$AUTH_KEY")
-            echo "Check health: http://$IP_SERVER:8005/voiceprint/health?key=$AUTH_KEY"
-            docker exec -i xiaozhi-esp32-server-db mysql -u root -p"$MYSQL_ROOT_PASSWORD" xiaozhi_esp32_server <<EOF
-    INSERT INTO sys_params (param_code, param_value) 
-    VALUES ('server.voice_print', '$AUTH_KEY') 
-    ON DUPLICATE KEY UPDATE param_value = '$AUTH_KEY';
+            TABLE_CHECK=$(docker exec -i xiaozhi-esp32-server-db mysql -u root -p"$MYSQL_ROOT_PASSWORD" xiaozhi_esp32_server -e "SHOW TABLES LIKE 'sys_params';" -N 2>/dev/null)
+            if [ -n "$TABLE_CHECK" ]; then
+                docker exec -i xiaozhi-esp32-server-db mysql -u root -p"$MYSQL_ROOT_PASSWORD" xiaozhi_esp32_server 2>/dev/null<<EOF
+UPDATE sys_params SET param_value = 'http://$IP_SERVER:8005/voiceprint/health?key=$AUTH_KEY' WHERE param_code = 'server.voice_print';
 EOF
-            echo "Kiểm tra docker logs -f voiceprint-api"
-            if [ "$STATUS" == "200" ]; then
-                echo "=========================================================="
-                echo "THÀNH CÔNG: Voice Print đã hoạt động!"
-                
-                echo "Đã đồng bộ mã Voice Print vào Database thành công."
-                echo "=========================================================="
+                echo "THÀNH CÔNG: Đã đồng bộ mã Voice Print."
                 break
-            else
-                echo "API trả về lỗi $STATUS. Dịch vụ chưa sẵn sàng, đang thử lại..."
             fi
         fi
-        
-        echo "Chờ dịch vụ khởi động... ($((COUNT+1))/$MAX_RETRIES)"
+        echo "Chờ dịch vụ sinh mã... ($((COUNT+1))/$MAX_RETRIES)"
         sleep 5
         COUNT=$((COUNT+1))
     done
+fi # Đóng khối if Voice Print
 
-    if [ "$STATUS" != "200" ]; then
-        echo "CẢNH BÁO: Không thể kết nối tới Voiceprint API. Vui lòng kiểm tra lại thủ công."
-    fi
-fi
+# 13. Hỏi và cài đặt MCP ENDPOINT
+read -p "Bạn có muốn chạy MCP ENDPOINT không? (y/N): " confirm_vp
+if [[ "$confirm_vp" =~ ^[Yy]$ ]]; then    
+    echo "Đang tạo file $BASE_DIR/docker-compose-mcp.yml"
+    cat <<'EOF' > "$BASE_DIR/docker-compose-mcp.yml"
+services:
+  mcp-endpoint-server:
+    image: 192.168.9.44:7000/chimds/xiaozhi-esp32-server-vn:mcp-endpoint-server-vn
+    container_name: mcp-endpoint-server
+    restart: always
+    networks:
+      - default
+    ports:
+      - "8004:8004"
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
+    volumes:
+      - ./data:/app/data
+networks:
+  default:
+    external: true
+    name: xiaozhi-server_default
+EOF
+
+    echo "Đang khởi động MCP..."
+    docker compose -f "$BASE_DIR/docker-compose-mcp.yml" up -d
+
+    MAX_RETRIES=15
+    COUNT=0
+    while [ $COUNT -lt $MAX_RETRIES ]; do
+        # Thêm | sed 's/\x1B\[[0-9;]*[JKmsu]//g' để loại bỏ sạch mã màu ANSI
+        MCP_KEY=$(docker logs mcp-endpoint-server 2>&1 | sed 's/\x1B\[[0-9;]*[JKmsu]//g' | grep ":8004/mcp_endpoint/health?key=" | tail -n 1 | sed -n 's/.*key=\([^ ]*\).*/\1/p')
+
+        MCP_TOKEN=$(docker logs mcp-endpoint-server 2>&1 | sed 's/\x1B\[[0-9;]*[JKmsu]//g' | grep ":8004/mcp_endpoint/mcp/?token=" | tail -n 1 | sed -n 's/.*token=\([^ ]*\).*/\1/p')
+        
+        if [ -n "$MCP_KEY" ] && [ -n "$MCP_TOKEN" ]; then
+            TABLE_CHECK=$(docker exec -i xiaozhi-esp32-server-db mysql -u root -p"$MYSQL_ROOT_PASSWORD" xiaozhi_esp32_server -e "SHOW TABLES LIKE 'sys_params';" -N 2>/dev/null)
+            if [ -n "$TABLE_CHECK" ]; then
+                docker exec -i xiaozhi-esp32-server-db mysql -u root -p"$MYSQL_ROOT_PASSWORD" xiaozhi_esp32_server 2>/dev/null<<EOF
+UPDATE sys_params SET param_value = 'http://$IP_SERVER:8004/mcp_endpoint/mcp/?key=$MCP_KEY' WHERE param_code = 'server.mcp_endpoint';
+EOF
+                echo "THÀNH CÔNG: MCP đã lưu vào DB!"
+                break
+            fi
+        fi
+        sleep 5
+        COUNT=$((COUNT+1))
+    done
+fi # Đóng khối if MCP
