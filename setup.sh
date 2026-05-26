@@ -1,12 +1,7 @@
-#!/bin/bash
 
 echo "--- CẤU HÌNH KHỞI TẠO HỆ THỐNG ---"
-
-# 1. Hỏi người dùng tên thư mục chính
 read -p "Nhập tên thư mục bạn muốn tạo (Mặc định sẽ là xiaozhi-server): " input 
 folder_name=${input:-"xiaozhi-server"}
-
-# Gán biến BASE_DIR là đường dẫn dựa trên tên đã chọn
 BASE_DIR="$HOME/$folder_name"
 PACKAGES=("nano" "nfs-common")
 INSTALL_REQUIRED=false
@@ -16,26 +11,18 @@ for pkg in "${PACKAGES[@]}"; do
         INSTALL_REQUIRED=true
     fi
 done
-
-# Kiểm tra Docker
 if ! command -v docker &> /dev/null; then
     echo "Docker chưa được cài đặt."
     INSTALL_REQUIRED=true
 fi
-
-# Thực hiện cài đặt nếu có bất kỳ gói nào thiếu
 if [ "$INSTALL_REQUIRED" = true ]; then
     echo "--- TIẾN HÀNH CẬP NHẬT VÀ CÀI ĐẶT CÁC GÓI THIẾU ---"
     sudo apt-get update
-
-    # Cài đặt nano và nfs-common nếu thiếu
     for pkg in "${PACKAGES[@]}"; do
         if ! dpkg -l | grep -q "^ii  $pkg "; then
             sudo apt-get install -y "$pkg"
         fi
     done
-
-    # Cài đặt Docker nếu thiếu
     if ! command -v docker &> /dev/null; then
         echo "--- ĐANG CÀI ĐẶT DOCKER ---"
         sudo apt-get install -y ca-certificates curl gnupg
@@ -50,8 +37,6 @@ if [ "$INSTALL_REQUIRED" = true ]; then
 
         sudo apt-get update
         sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-        
-        # Thêm user vào nhóm docker
         sudo usermod -aG docker $USER
         echo "Cài đặt Docker thành công!"
     fi
@@ -60,8 +45,6 @@ else
 fi
 
 echo "Hệ thống sẽ cài đặt tại: $BASE_DIR"
-
-# 3. Tạo thư mục cấu trúc
 echo "Đang tạo cấu trúc thư mục..."
 sudo mkdir -p "$BASE_DIR"/{data/voiceprint,uploadfile,mysql/data,models/SenseVoiceSmall}
 sudo chown -R $USER:$USER "$BASE_DIR"
@@ -77,19 +60,13 @@ else
 fi
 
 echo "IP Server được sử dụng là: $IP_SERVER"
-# 4. Hỏi người dùng về việc mount NAS
 read -p "Bạn có muốn mount dữ liệu trên NAS thông qua NFS không? (y/N): " confirm
 
 USE_NAS=false
 if [[ "$confirm" =~ ^[Yy]$ ]]; then
     read -p "Nhập đường dẫn NAS (VD: 192.168.3.6:/volume5/ragflow_data): " nas_path
-    
-    # --- ĐOẠN MỚI: Kiểm tra kết nối NAS trước khi mount ---
     echo "Đang kiểm tra kết nối tới $nas_path..."
-    # Lấy IP từ chuỗi đường dẫn (phần trước dấu :)
     nas_ip=$(echo "$nas_path" | cut -d':' -f1)
-    
-    # Kiểm tra xem NAS có phản hồi không (timeout 5s)
     if timeout 5s showmount -e "$nas_ip" &> /dev/null; then
         echo "Kết nối thành công!"
         USE_NAS=true
@@ -100,8 +77,6 @@ if [[ "$confirm" =~ ^[Yy]$ ]]; then
         USE_NAS=false
     fi
 fi
-
-# Thực thi logic dựa trên kết quả kiểm tra
 if [ "$USE_NAS" = true ]; then
     MINIO_VOLUME_PATH="$BASE_DIR/nas_data/ragflow/minio"
     sudo mkdir -p "$MINIO_VOLUME_PATH"
@@ -121,14 +96,9 @@ else
     sudo mkdir -p "$MINIO_VOLUME_PATH"
     sudo chown -R 1000:1000 "$MINIO_VOLUME_PATH"
 fi
-
-# --- QUAN TRỌNG: Lưu đường dẫn vào .env ---
-# Ghi vào file .env để docker-compose sử dụng
 echo "MINIO_VOLUME_PATH=$MINIO_VOLUME_PATH" >> "$BASE_DIR/.env"
 
 echo "Hoàn tất setup cấu trúc thư mục và biến môi trường!"
-
-# 5. Tải model SenseVoiceSmall
 
 MODEL_DIR="$BASE_DIR/models/SenseVoiceSmall"
 MODEL_FILE="$MODEL_DIR/model.pt"
@@ -140,7 +110,6 @@ if [ -f "$MODEL_FILE" ]; then
     echo "Model đã tồn tại, bỏ qua việc tải."
 else
     echo "Đang tải model (việc này có thể mất thời gian)..."
-    # Sử dụng curl -L (follow redirect) và -C - (tự động tiếp tục nếu bị ngắt giữa chừng)
     sudo curl -L -C - "$MODEL_URL" -o "$MODEL_FILE"
     
     if [ $? -eq 0 ]; then
@@ -150,11 +119,7 @@ else
         exit 1
     fi
 fi
-
-# 7. Tạo file .env
 echo "--- CẤU HÌNH RAGFLOW .ENV ---"
-
-# Hàm hỗ trợ nhập liệu với giá trị mặc định
 ask_input() {
     local prompt=$1
     local default_value=$2
@@ -172,8 +137,6 @@ ask_input() {
         fi
     done
 }
-
-# Hàm nhập mật khẩu có ẩn ký tự (bảo mật hơn)
 ask_password() {
     local prompt=$1
     local var_name=$2
@@ -190,8 +153,6 @@ ask_password() {
         fi
     done
 }
-
-# Thu thập thông tin
 ask_input "Nhập SVR_WEB_HTTP_PORT" "8008" SVR_WEB_HTTP_PORT
 ask_input "Nhập SVR_WEB_HTTPS_PORT" "8009" SVR_WEB_HTTPS_PORT
 ask_input "Nhập MYSQL_USER (User ứng dụng RAGFLOW)" "rag_flow" MYSQL_USER
@@ -291,8 +252,6 @@ DISABLE_PASSWORD_LOGIN=false
 EOF
 
 echo "File .env đã được tạo thành công với thông tin tùy chỉnh!"
-
-# 8. Tạo file file xiaozhi-server/docker-compose-xiaozhi.yml
 echo "Đang tạo file $BASE_DIR/docker-compose-xiaozhi.yml"
 cat <<'EOF' > "$BASE_DIR/docker-compose-xiaozhi.yml"
 services:
@@ -380,8 +339,6 @@ services:
 networks:
   default:
 EOF
-
-# 10. Chạy docker compose cho Xiaozhi trước
 echo "Đang khởi động Xiaozhi Server..."
 cd "$BASE_DIR"
 docker compose -f "$BASE_DIR/docker-compose-xiaozhi.yml" up -d
@@ -398,12 +355,8 @@ echo "=========================================================="
 sleep 20
 
 SECRET_KEY=""
-# Lấy Secret Key
 while true; do
-    # Lưu kết quả vào biến tạm để kiểm tra
     TEMP_KEY=$(docker exec xiaozhi-esp32-server-db mysql -u root -p"$MYSQL_ROOT_PASSWORD" xiaozhi_esp32_server -N -s -e "SELECT param_value FROM sys_params WHERE param_code = 'server.secret';" 2>/dev/null | tr -d '[:space:]')
-
-    # Kiểm tra nếu TEMP_KEY có giá trị (không trống)
     if [ -n "$TEMP_KEY" ]; then
         SECRET_KEY="$TEMP_KEY"
         echo "Đã tìm thấy SECRET_KEY: $SECRET_KEY"
@@ -413,12 +366,8 @@ while true; do
         sleep 5 # Đợi 5 giây rồi kiểm tra lại
     fi
 done
-
-# Cấp quyền
 sudo chown -R $USER:$USER "$BASE_DIR/data"
 sudo chmod -R 755 "$BASE_DIR"
-
-# Tạo file .config.yaml
 
 CONFIG_FILE1="$BASE_DIR/data/.config.yaml"
 CONFIG_FILE2="$BASE_DIR/data/.agent-base-prompt.txt"
@@ -513,7 +462,6 @@ You are a playful, expressive, empathetic, and highly emotionally intelligent co
 
 EOF
 sleep 5
-# 11. Hỏi và cài đặt RAGFLOW
 read -p "Bạn có muốn chạy RAGFLOW không? (y/N): " confirm_rag
 if [[ "$confirm_rag" =~ ^[Yy]$ ]]; then
     echo "--- TIẾN HÀNH CÀI ĐẶT RAGFLOW ---"
@@ -523,11 +471,8 @@ if [[ "$confirm_rag" =~ ^[Yy]$ ]]; then
         GRANT ALL PRIVILEGES ON rag_flow.* TO '$MYSQL_USER'@'%';
         FLUSH PRIVILEGES;
 EOF
-
-# 6. Tạo file entrypoint.sh
 echo "Đang tạo file entrypoint.sh"
 cat <<'EOF' > "$BASE_DIR/entrypoint.sh"
-#!/usr/bin/env bash
 set -e
 
 echo "Start RAGFlow cluster, version: "
@@ -842,8 +787,6 @@ wait
 EOF
 
 sudo chmod +x "$BASE_DIR/entrypoint.sh"
-
-# 6. Tạo file docker-compose-base.yml
 echo "Đang tạo file $BASE_DIR/docker-compose-base.yml"
 cat <<'EOF' > "$BASE_DIR/docker-compose-base.yml"
 services:
@@ -1135,8 +1078,6 @@ networks:
   ragflow:
     driver: bridge
 EOF
-
-# 7. Tạo file file xiaozhi-server/docker-compose-ragflow.yml
 echo "Đang tạo file $BASE_DIR/docker-compose-ragflow.yml"
 cat <<'EOF' > "$BASE_DIR/docker-compose-ragflow.yml"
 include:
@@ -1203,8 +1144,6 @@ networks:
     external: true
     name: xiaozhi-server_default
 EOF
-
-# 9. Tạo file file xiaozhi-server/service_conf.yaml.template
 echo "Đang tạo file $BASE_DIR/service_conf.yaml.template"
 cat <<'EOF' > "$BASE_DIR/service_conf.yaml.template"
 ragflow:
@@ -1228,10 +1167,6 @@ minio:
   host: '${MINIO_HOST:-minio}:9000'
   bucket: '${MINIO_BUCKET:-}'
   prefix_path: '${MINIO_PREFIX_PATH:-}'
-  # optional: set to true for HTTPS (SSL/TLS). Used by MinIO client and health check.
-  # secure: ${MINIO_SECURE:-false}
-  # optional: set to false to allow self-signed certificates (e.g. in development).
-  # verify: ${MINIO_VERIFY:-true}
 es:
   hosts: 'http://${ES_HOST:-es01}:9200'
   username: '${ES_USER:-elastic}'
@@ -1287,8 +1222,6 @@ else
 fi
 
 sleep 5
-
-# 12. Hỏi và cài đặt VOICE PRINT
 read -p "Bạn có muốn chạy VOICE PRINT không? (y/N): " confirm_vp
 if [[ "$confirm_vp" =~ ^[Yy]$ ]]; then
     echo "Đang cấu hình Database cho Voice Print..."
@@ -1374,8 +1307,6 @@ EOF
         COUNT=$((COUNT+1))
     done
 fi # Đóng khối if Voice Print
-
-# 13. Hỏi và cài đặt MCP ENDPOINT
 read -p "Bạn có muốn chạy MCP ENDPOINT không? (y/N): " confirm_vp
 if [[ "$confirm_vp" =~ ^[Yy]$ ]]; then    
     echo "Đang tạo file $BASE_DIR/docker-compose-mcp.yml"
@@ -1407,7 +1338,6 @@ EOF
     MAX_RETRIES=15
     COUNT=0
     while [ $COUNT -lt $MAX_RETRIES ]; do
-        # Thêm | sed 's/\x1B\[[0-9;]*[JKmsu]//g' để loại bỏ sạch mã màu ANSI
         MCP_KEY=$(docker logs mcp-endpoint-server 2>&1 | sed 's/\x1B\[[0-9;]*[JKmsu]//g' | grep ":8004/mcp_endpoint/health?key=" | tail -n 1 | sed -n 's/.*key=\([^ ]*\).*/\1/p')
 
         MCP_TOKEN=$(docker logs mcp-endpoint-server 2>&1 | sed 's/\x1B\[[0-9;]*[JKmsu]//g' | grep ":8004/mcp_endpoint/mcp/?token=" | tail -n 1 | sed -n 's/.*token=\([^ ]*\).*/\1/p')
