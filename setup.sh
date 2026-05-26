@@ -297,7 +297,7 @@ echo "Đang tạo file $BASE_DIR/docker-compose-xiaozhi.yml"
 cat <<'EOF' > "$BASE_DIR/docker-compose-xiaozhi.yml"
 services:
   xiaozhi-esp32-server:
-    image: 192.168.9.44:7000/chimds/xiaozhi-esp32-server-vn:server_0.9.3
+    image: chimds/xiaozhi-esp32-server-vn:server_0.9.3
     container_name: xiaozhi-esp32-server
     env_file: 
       - .env
@@ -318,7 +318,7 @@ services:
       - ./data:/opt/xiaozhi-esp32-server/data
       - ./models/SenseVoiceSmall/model.pt:/opt/xiaozhi-esp32-server/models/SenseVoiceSmall/model.pt
   xiaozhi-esp32-server-web:
-    image: 192.168.9.44:7000/chimds/xiaozhi-esp32-server-vn:web_0.9.3
+    image: chimds/xiaozhi-esp32-server-vn:web_0.9.3
     container_name: xiaozhi-esp32-server-web
     env_file: 
       - .env
@@ -1309,7 +1309,7 @@ EOF
     cat <<'EOF' > "$BASE_DIR/docker-compose-voiceprint.yml"
 services:
   voiceprint-api:
-    image: 192.168.9.44:7000/chimds/xiaozhi-esp32-server-vn:voiceprint-api-vn
+    image: chimds/xiaozhi-esp32-server-vn:voiceprint-api-vn
     container_name: voiceprint-api
     restart: always
     networks:
@@ -1382,7 +1382,7 @@ if [[ "$confirm_vp" =~ ^[Yy]$ ]]; then
     cat <<'EOF' > "$BASE_DIR/docker-compose-mcp.yml"
 services:
   mcp-endpoint-server:
-    image: 192.168.9.44:7000/chimds/xiaozhi-esp32-server-vn:mcp-endpoint-server-vn
+    image: chimds/xiaozhi-esp32-server-vn:mcp-endpoint-server-vn
     container_name: mcp-endpoint-server
     restart: always
     networks:
